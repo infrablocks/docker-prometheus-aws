@@ -10,3 +10,9 @@ RUN cd /tmp \
     && rm "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
     && rm -rf "prometheus-${PROMETHEUS_VERSION}.linux-amd64" \
     && cd /
+
+COPY docker-entrypoint.sh /opt/prometheus/docker-entrypoint.sh
+
+RUN ["chmod", "+x", "/opt/prometheus/docker-entrypoint.sh"]
+
+ENV STARTUP_SCRIPT_PATH=/opt/prometheus/docker-entrypoint.sh
