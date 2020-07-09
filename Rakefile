@@ -68,6 +68,7 @@ end
 
 namespace :pipeline do
   task :prepare => [
+      :'circle_ci:project:follow',
       :'circle_ci:env_vars:ensure',
       :'circle_ci:ssh_keys:ensure',
       :'github:deploy_keys:ensure'
