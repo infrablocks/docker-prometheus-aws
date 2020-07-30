@@ -25,6 +25,8 @@ def latest_tag
   end.max
 end
 
+task :default => :'test:integration'
+
 RakeSSH.define_key_tasks(
     namespace: :deploy_key,
     path: 'config/secrets/ci/',
@@ -113,8 +115,6 @@ namespace :dependencies do
       command_switches = "#{compose_file_switch} #{project_name_switch}"
       subcommand_switches = "#{detach_switch} #{remove_orphans_switch}"
 
-      tmpdir = OS.osx? ? "/private" + ENV["TMPDIR"] : ENV["TMPDIR"]
-
       sh({
           "TMPDIR" => tmpdir,
       }, "docker-compose #{command_switches} up #{subcommand_switches}")
@@ -129,8 +129,6 @@ namespace :dependencies do
       compose_file_switch = "--file #{compose_file}"
 
       command_switches = "#{compose_file_switch} #{project_name_switch}"
-
-      tmpdir = OS.osx? ? "/private" + ENV["TMPDIR"] : ENV["TMPDIR"]
 
       sh({
           "TMPDIR" => tmpdir,
@@ -158,4 +156,9 @@ namespace :version do
     repo.add_tag(next_tag.to_s)
     repo.push('origin', 'master', tags: true)
   end
+end
+
+def tmpdir
+  base = (ENV["TMPDIR"] || "/tmp")
+  OS.osx? ? "/private" + base : base
 end
