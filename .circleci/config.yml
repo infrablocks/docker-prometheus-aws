@@ -9,8 +9,8 @@ jobs:
       - setup_remote_docker
       - run: ./scripts/ci/common/install-bash.sh
       - run: ./scripts/ci/common/install-ruby.sh
-      - run: ./scripts/ci/common/install-docker-compose.sh
       - run: ./scripts/ci/common/install-git-crypt.sh
+      - run: ./scripts/ci/common/install-docker-compose.sh
       - run: ./scripts/ci/common/install-gpg-key.sh
       - run: ./scripts/ci/common/configure-git.sh
       - run: ./scripts/ci/steps/test.sh
