@@ -25,6 +25,11 @@ def latest_tag
   end.max
 end
 
+def tmpdir
+  base = (ENV["TMPDIR"] || "/tmp")
+  OS.osx? ? "/private" + base : base
+end
+
 task :default => :'test:integration'
 
 RakeSSH.define_key_tasks(
@@ -156,9 +161,4 @@ namespace :version do
     repo.add_tag(next_tag.to_s)
     repo.push('origin', 'master', tags: true)
   end
-end
-
-def tmpdir
-  base = (ENV["TMPDIR"] || "/tmp")
-  OS.osx? ? "/private" + base : base
 end
