@@ -60,28 +60,27 @@ describe 'prometheus' do
   end
 
   def create_env_file
-    env_file_contents = {
+    environment = {
         "TESTING" => "123"
     }
+    env_file_contents = environment
+        .to_a
+        .collect { |item| "#{item[0]}=\"#{item[1]}\"" }
+        .join("\n")
 
-    s3_client = Aws::S3::Client.new(
-        region: 'us-east-1',
-        access_key_id: '...',
-        secret_access_key: '...',
-        endpoint: 'http://localhost:4566',
-        force_path_style: true)
-    s3_client.create_bucket({
-        bucket: 'bucket'
-    })
-    s3_client.put_object({
-        body: env_file_contents
-            .to_a
-            .collect { |item| "#{item[0]}=\"#{item[1]}\"" }
-            .join("\n"),
-        bucket: "bucket",
-        key: "env-file.env",
-        server_side_encryption: "AES256",
-    })
+    command('aws ' +
+        '--endpoint-url http://localhost:4566 ' +
+        'mb ' +
+        's3://bucket ' +
+        '--region "us-east-1"')
+    command("echo \"#{env_file_contents}\" | " +
+        'aws ' +
+        '--endpoint-url http://localhost:4566 ' +
+        'cp ' +
+        '- ' +
+        's3://bucket/enf-file.env ' +
+        '--region "us-east-1" ' +
+        '--sse AES256')
   end
 
   def execute_docker_entrypoint(opts)
