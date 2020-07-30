@@ -1,0 +1,19 @@
+version: '2.1'
+
+services:
+  s3:
+    image: localstack/localstack:0.11.3
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_TMP_FOLDER=${TMPDIR}
+    volumes:
+      - "${TMPDIR}:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  metadata:
+    image: amazon/amazon-ec2-metadata-mock:v1.2.0
+    ports:
+      - "1338:1338"

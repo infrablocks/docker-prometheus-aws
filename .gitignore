@@ -22,6 +22,7 @@ run/logs/
 *.log
 .tmp
 .rakeTasks
+.rspec_status
 
 # Terraform
 .terraform

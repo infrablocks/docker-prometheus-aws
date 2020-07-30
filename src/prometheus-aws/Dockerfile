@@ -1,9 +1,11 @@
-FROM infrablocks/alpine-aws-s3-config:0.16.0
+FROM infrablocks/alpine-aws-s3-config:0.17.0-rc.2
 
 ENV PROMETHEUS_VERSION 2.19.2
 
 RUN cd /tmp \
-    && curl -L "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" -o "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+    && curl \
+        -L "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+        -o "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
     && tar -xvf "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
     && mkdir -p /opt/prometheus \
     && cp -R "prometheus-${PROMETHEUS_VERSION}.linux-amd64"/* /opt/prometheus \

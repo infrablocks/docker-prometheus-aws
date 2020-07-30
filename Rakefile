@@ -5,7 +5,9 @@ require 'rake_ssh'
 require 'rake_terraform'
 require 'yaml'
 require 'git'
+require 'os'
 require 'semantic'
+require 'rspec/core/rake_task'
 
 require_relative 'lib/version'
 
@@ -83,6 +85,7 @@ namespace :image do
 
     t.copy_spec = [
         "src/prometheus-aws/Dockerfile",
+        "src/prometheus-aws/docker-entrypoint.sh",
     ]
 
     t.repository_name = 'prometheus-aws'
@@ -93,6 +96,54 @@ namespace :image do
 
     t.tags = [latest_tag.to_s, 'latest']
   end
+end
+
+namespace :dependencies do
+  namespace :test do
+    desc "Provision spec dependencies"
+    task :provision do
+      project_name = "docker_prometheus_aws_test"
+      compose_file = "spec/dependencies.yml"
+
+      project_name_switch = "--project-name #{project_name}"
+      compose_file_switch = "--file #{compose_file}"
+      detach_switch = "--detach"
+      remove_orphans_switch = "--remove-orphans"
+
+      command_switches = "#{compose_file_switch} #{project_name_switch}"
+      subcommand_switches = "#{detach_switch} #{remove_orphans_switch}"
+
+      tmpdir = OS.osx? ? "/private" + ENV["TMPDIR"] : ENV["TMPDIR"]
+
+      sh({
+          "TMPDIR" => tmpdir,
+      }, "docker-compose #{command_switches} up #{subcommand_switches}")
+    end
+
+    desc "Destroy spec dependencies"
+    task :destroy do
+      project_name = "docker_prometheus_aws_test"
+      compose_file = "spec/dependencies.yml"
+
+      project_name_switch = "--project-name #{project_name}"
+      compose_file_switch = "--file #{compose_file}"
+
+      command_switches = "#{compose_file_switch} #{project_name_switch}"
+
+      tmpdir = OS.osx? ? "/private" + ENV["TMPDIR"] : ENV["TMPDIR"]
+
+      sh({
+          "TMPDIR" => tmpdir,
+      }, "docker-compose #{command_switches} down")
+    end
+  end
+end
+
+namespace :test do
+  RSpec::Core::RakeTask.new(:integration => [
+      'image:build',
+      'dependencies:test:provision'
+  ])
 end
 
 namespace :version do
