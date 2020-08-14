@@ -1,101 +1,208 @@
 require 'spec_helper'
-require 'aws-sdk'
-require 'octopoller'
-require 'dotenv'
 
 describe 'prometheus' do
+  metadata_service_url = 'http://metadata:1338'
+  s3_endpoint_url = 'http://s3:4566'
+  s3_bucket_region = 'us-east-1'
+  s3_bucket_path = 's3://bucket'
+  s3_env_file_object_path = 's3://bucket/env-file.env'
+
+  environment = {
+      'AWS_METADATA_SERVICE_URL' => metadata_service_url,
+      'AWS_ACCESS_KEY_ID' => "...",
+      'AWS_SECRET_ACCESS_KEY' => "...",
+      'AWS_S3_ENDPOINT_URL' => s3_endpoint_url,
+      'AWS_S3_BUCKET_REGION' => s3_bucket_region,
+      'AWS_S3_ENV_FILE_OBJECT_PATH' => s3_env_file_object_path
+  }
+  image = 'prometheus-aws:latest'
+  extra = {
+      'Entrypoint' => '/bin/sh',
+      'HostConfig' => {
+          'NetworkMode' => 'docker_prometheus_aws_test_default'
+      }
+  }
+
   before(:all) do
-    configure_container
-    create_env_file
-    @docker_entrypoint_output = execute_docker_entrypoint(
-        started_indicator: "Server is ready to receive web requests.")
-  end
-
-  it "runs prometheus" do
-    expect(process('/opt/prometheus/prometheus')).to be_running
-  end
-
-  it 'points at the correct configuration file' do
-    expect(process('/opt/prometheus/prometheus').args)
-        .to(match(/--config\.file \/opt\/prometheus\/prometheus.yml/))
-  end
-
-  it 'configures and enables the web UI' do
-    args = process('/opt/prometheus/prometheus').args
-
-    expect(args).to(match(
-        /--web.console.libraries=\/opt\/prometheus\/console_libraries/))
-    expect(args).to(match(
-        /--web.console.templates=\/opt\/prometheus\/consoles/))
-    expect(args).to(match(
-        /--web.enable-admin-api/))
-  end
-
-  it 'has some environment' do
-    pid = process('/opt/prometheus/prometheus').pid
-    environment_contents =
-        command("tr '\\0' '\\n' < /proc/#{pid}/environ").stdout
-    environment = Dotenv::Parser.call(environment_contents)
-
-    expect(environment).to include('SELF_IP', 'SELF_ID', 'SELF_HOSTNAME')
-  end
-
-  def configure_container
     set :backend, :docker
-    set :env, {
-        'AWS_METADATA_SERVICE_URL' => 'http://metadata:1338',
-        'AWS_ACCESS_KEY_ID' => "...",
-        'AWS_SECRET_ACCESS_KEY' => "...",
-        'AWS_S3_ENDPOINT_URL' => 'http://s3:4566',
-        'AWS_S3_BUCKET_REGION' => 'us-east-1',
-        'AWS_S3_ENV_FILE_OBJECT_PATH' => 's3://bucket/env-file.env'
-    }
-    set :docker_image, 'prometheus-aws:latest'
-    set :docker_container_create_options, {
-        'Entrypoint' => '/bin/sh',
-        'HostConfig' => {
-            'NetworkMode' => 'docker_prometheus_aws_test_default'
-        }
-    }
+    set :env, environment
+    set :docker_image, image
+    set :docker_container_create_options, extra
   end
 
-  def create_env_file
-    environment = {
-        "TESTING" => "123"
-    }
-    env_file_contents = environment
-        .to_a
-        .collect { |item| "#{item[0]}=\"#{item[1]}\"" }
-        .join("\n")
+  describe 'command' do
+    after(:all) do
+      Specinfra::Backend::Docker.clear
+    end
 
-    command('aws ' +
-        '--endpoint-url http://localhost:4566 ' +
+    it "includes the prometheus command" do
+      expect(command('/opt/prometheus/prometheus --version').stderr)
+          .to match /2.20.0/
+    end
+  end
+
+  describe 'entrypoint' do
+    before(:all) do
+      create_env_file(
+          endpoint_url: s3_endpoint_url,
+          region: s3_bucket_region,
+          bucket_path: s3_bucket_path,
+          object_path: s3_env_file_object_path)
+
+      execute_docker_entrypoint(
+          started_indicator: "Server is ready to receive web requests.")
+    end
+
+    after(:all) do
+      Specinfra::Backend::Docker.clear
+    end
+
+    it "runs prometheus" do
+      expect(process('/opt/prometheus/prometheus')).to be_running
+    end
+
+    it 'points at the correct configuration file' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--config\.file \/opt\/prometheus\/prometheus.yml/))
+    end
+
+    it 'configures and enables the web UI' do
+      args = process('/opt/prometheus/prometheus').args
+
+      expect(args).to(match(
+          /--web.console.libraries=\/opt\/prometheus\/console_libraries/))
+      expect(args).to(match(
+          /--web.console.templates=\/opt\/prometheus\/consoles/))
+      expect(args).to(match(
+          /--web.enable-admin-api/))
+    end
+
+    it 'has instance metadata available in its environment' do
+      pid = process('/opt/prometheus/prometheus').pid
+      environment_contents =
+          command("tr '\\0' '\\n' < /proc/#{pid}/environ").stdout
+      environment = Dotenv::Parser.call(environment_contents)
+
+      expect(environment)
+          .to(include('SELF_IP', 'SELF_ID', 'SELF_HOSTNAME'))
+    end
+  end
+
+  describe 'prometheus configuration' do
+    describe 'without configuration object path provided' do
+      before(:all) do
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path)
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all) do
+        Specinfra::Backend::Docker.clear
+      end
+
+      it 'uses the default configuration' do
+        prometheus_config = file('/opt/prometheus/prometheus.yml').content
+
+        expect(prometheus_config)
+            .to(eq(File.read('spec/fixtures/default-prometheus-config.yml')))
+      end
+    end
+
+    describe 'with configuration object path provided' do
+      before(:all) do
+        configuration_file_object_path = "#{s3_bucket_path}/prometheus.yml"
+
+        create_object(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: configuration_file_object_path,
+            content: File.read('spec/fixtures/custom-prometheus-config.yml'))
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path,
+            env: {
+                "PROMETHEUS_CONFIGURATION_FILE_OBJECT_PATH" =>
+                    configuration_file_object_path
+            })
+
+        require 'pp'
+        pp execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all) do
+        Specinfra::Backend::Docker.clear
+      end
+
+      it 'uses the default configuration' do
+        prometheus_config = file('/opt/prometheus/prometheus.yml').content
+
+        expect(prometheus_config)
+            .to(eq(File.read('spec/fixtures/custom-prometheus-config.yml')))
+      end
+    end
+  end
+
+  def create_env_file(opts)
+    create_object(opts
+        .merge(content: (opts[:env] || {})
+            .to_a
+            .collect { |item| " #{item[0]}=\"#{item[1]}\"" }
+            .join("\n")))
+  end
+
+  def execute_command(command_string)
+    command = command(command_string)
+    exit_status = command.exit_status
+    unless exit_status == 0
+      raise RuntimeError,
+          "\"#{command_string}\" failed with exit code: #{exit_status}"
+    end
+    command
+  end
+
+  def create_object(opts)
+    execute_command('aws ' +
+        "--endpoint-url #{opts[:endpoint_url]} " +
+        's3 ' +
         'mb ' +
-        's3://bucket ' +
-        '--region "us-east-1"')
-    command("echo \"#{env_file_contents}\" | " +
+        "#{opts[:bucket_path]} " +
+        "--region \"#{opts[:region]}\"")
+    execute_command("echo -n \"#{opts[:content]}\" | " +
         'aws ' +
-        '--endpoint-url http://localhost:4566 ' +
+        "--endpoint-url #{opts[:endpoint_url]} " +
+        's3 ' +
         'cp ' +
         '- ' +
-        's3://bucket/enf-file.env ' +
-        '--region "us-east-1" ' +
+        "#{opts[:object_path]} " +
+        "--region \"#{opts[:region]}\" " +
         '--sse AES256')
   end
 
   def execute_docker_entrypoint(opts)
-    docker_entrypoint_command =
-        command('docker-entrypoint.sh > /tmp/docker-entrypoint.log 2>&1 &')
-    exit_status = docker_entrypoint_command.exit_status
-    unless exit_status == 0
-      raise RuntimeError,
-          "docker-entrypoint.sh failed with exit code: #{exit_status}"
-    end
-    Octopoller.poll(timeout: 15) do
-      docker_entrypoint_log = command('cat /tmp/docker-entrypoint.log').stdout
-      docker_entrypoint_log =~ /#{opts[:started_indicator]}/ ?
-          docker_entrypoint_log :
-          :re_poll
+    logfile_path = '/tmp/docker-entrypoint.log'
+
+    execute_command(
+        "docker-entrypoint.sh > #{logfile_path} 2>&1 &")
+
+    begin
+      Octopoller.poll(timeout: 15) do
+        docker_entrypoint_log = command("cat #{logfile_path}").stdout
+        docker_entrypoint_log =~ /#{opts[:started_indicator]}/ ?
+            docker_entrypoint_log :
+            :re_poll
+      end
+    rescue Octopoller::TimeoutError => e
+      puts command("cat #{logfile_path}").stdout
+      raise e
     end
   end
 end

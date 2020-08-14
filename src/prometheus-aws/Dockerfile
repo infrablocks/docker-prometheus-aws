@@ -1,6 +1,6 @@
-FROM infrablocks/alpine-aws-s3-config:0.17.0-rc.2
+FROM infrablocks/alpine-aws-s3-config:0.18.0-rc.2
 
-ENV PROMETHEUS_VERSION 2.19.2
+ENV PROMETHEUS_VERSION 2.20.0
 
 RUN cd /tmp \
     && curl \
@@ -14,7 +14,10 @@ RUN cd /tmp \
     && cd /
 
 COPY docker-entrypoint.sh /opt/prometheus/docker-entrypoint.sh
+COPY fetch-configuration.sh /opt/prometheus/fetch-configuration.sh
 
 RUN ["chmod", "+x", "/opt/prometheus/docker-entrypoint.sh"]
+RUN ["chmod", "+x", "/opt/prometheus/fetch-configuration.sh"]
 
 ENV STARTUP_SCRIPT_PATH=/opt/prometheus/docker-entrypoint.sh
+ENV FETCH_SECRETS_FILES_SCRIPT_PATH=/opt/prometheus/fetch-configuration.sh

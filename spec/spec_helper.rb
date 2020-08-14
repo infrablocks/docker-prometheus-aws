@@ -1,6 +1,9 @@
 require 'bundler/setup'
-require "serverspec"
-require "docker"
+require 'docker'
+require 'aws-sdk'
+require 'octopoller'
+require 'dotenv'
+require 'serverspec'
 
 RSpec.configure do |config|
   config.example_status_persistence_file_path = '.rspec_status'

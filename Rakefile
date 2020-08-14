@@ -93,6 +93,7 @@ namespace :image do
     t.copy_spec = [
         "src/prometheus-aws/Dockerfile",
         "src/prometheus-aws/docker-entrypoint.sh",
+        "src/prometheus-aws/fetch-configuration.sh",
     ]
 
     t.repository_name = 'prometheus-aws'
