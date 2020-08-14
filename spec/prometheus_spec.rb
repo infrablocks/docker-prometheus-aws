@@ -63,7 +63,7 @@ describe 'prometheus' do
 
     it 'points at the correct configuration file' do
       expect(process('/opt/prometheus/prometheus').args)
-          .to(match(/--config\.file \/opt\/prometheus\/prometheus.yml/))
+          .to(match(/--config\.file=\/opt\/prometheus\/prometheus.yml/))
     end
 
     it 'configures and enables the web UI' do
@@ -133,8 +133,7 @@ describe 'prometheus' do
                     configuration_file_object_path
             })
 
-        require 'pp'
-        pp execute_docker_entrypoint(
+        execute_docker_entrypoint(
             started_indicator: "Server is ready to receive web requests.")
       end
 
@@ -147,6 +146,102 @@ describe 'prometheus' do
 
         expect(prometheus_config)
             .to(eq(File.read('spec/fixtures/custom-prometheus-config.yml')))
+      end
+    end
+  end
+
+  describe 'storage' do
+    describe 'without tsdb storage location provided' do
+      before(:all) do
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path)
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all) do
+        Specinfra::Backend::Docker.clear
+      end
+
+      it 'stores tsdb in /var/lib/prometheus' do
+        expect(process('/opt/prometheus/prometheus').args)
+            .to(match(/--storage\.tsdb\.path=\/var\/lib\/prometheus/))
+      end
+    end
+
+    describe 'with tsdb storage location provided' do
+      before(:all) do
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path,
+            env: {
+                "PROMETHEUS_STORAGE_TSDB_PATH" => "/data"
+            })
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all) do
+        Specinfra::Backend::Docker.clear
+      end
+
+      it 'stores tsdb in /var/lib/prometheus' do
+        expect(process('/opt/prometheus/prometheus').args)
+            .to(match(/--storage\.tsdb\.path=\/data/))
+      end
+    end
+
+    describe 'without tsdb storage retention provided' do
+      before(:all) do
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path)
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all) do
+        Specinfra::Backend::Docker.clear
+      end
+
+      it 'retains samples for 30 days' do
+        expect(process('/opt/prometheus/prometheus').args)
+            .to(match(/--storage\.tsdb\.retention\.time=30d/))
+      end
+    end
+
+    describe 'with tsdb storage retention provided' do
+      before(:all) do
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path,
+            env: {
+                "PROMETHEUS_STORAGE_TSDB_RETENTION_TIME" => "10d"
+            })
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all) do
+        Specinfra::Backend::Docker.clear
+      end
+
+      it 'retains samples for the specified duration' do
+        expect(process('/opt/prometheus/prometheus').args)
+            .to(match(/--storage\.tsdb\.retention\.time=10d/))
       end
     end
   end
