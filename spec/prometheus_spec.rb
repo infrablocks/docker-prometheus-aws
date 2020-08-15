@@ -78,6 +78,12 @@ describe 'prometheus' do
           /--storage.tsdb.no-lockfile/))
     end
 
+    it 'uses the JSON log format' do
+      args = process('/opt/prometheus/prometheus').args
+
+      expect(args).to(match(/--log.format=json/))
+    end
+
     it 'has instance metadata available in its environment' do
       pid = process('/opt/prometheus/prometheus').pid
       environment_contents =

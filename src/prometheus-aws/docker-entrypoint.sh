@@ -38,4 +38,6 @@ exec /opt/prometheus/prometheus \
     --web.console.libraries="/opt/prometheus/console_libraries" \
     --web.console.templates="/opt/prometheus/consoles" \
     \
+    --log.format="json" \
+    \
     "${additional_options[@]}"
