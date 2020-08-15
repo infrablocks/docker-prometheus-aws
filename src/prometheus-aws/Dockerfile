@@ -1,4 +1,4 @@
-FROM infrablocks/alpine-aws-s3-config:0.18.0-rc.2
+FROM infrablocks/alpine-aws-s3-config:0.18.0
 
 ENV PROMETHEUS_VERSION 2.20.0
 
