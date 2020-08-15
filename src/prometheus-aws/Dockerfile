@@ -13,11 +13,13 @@ RUN cd /tmp \
     && rm -rf "prometheus-${PROMETHEUS_VERSION}.linux-amd64" \
     && cd /
 
+RUN mkdir /opt/prometheus/rules
+
 COPY docker-entrypoint.sh /opt/prometheus/docker-entrypoint.sh
-COPY fetch-configuration.sh /opt/prometheus/fetch-configuration.sh
+COPY scripts/fetch-configuration.sh /opt/prometheus/scripts/fetch-configuration.sh
 
 RUN ["chmod", "+x", "/opt/prometheus/docker-entrypoint.sh"]
-RUN ["chmod", "+x", "/opt/prometheus/fetch-configuration.sh"]
+RUN ["chmod", "+x", "/opt/prometheus/scripts/fetch-configuration.sh"]
 
 ENV STARTUP_SCRIPT_PATH=/opt/prometheus/docker-entrypoint.sh
-ENV FETCH_SECRETS_FILES_SCRIPT_PATH=/opt/prometheus/fetch-configuration.sh
+ENV FETCH_SECRETS_FILES_SCRIPT_PATH=/opt/prometheus/scripts/fetch-configuration.sh

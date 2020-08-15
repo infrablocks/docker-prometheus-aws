@@ -31,9 +31,7 @@ describe 'prometheus' do
   end
 
   describe 'command' do
-    after(:all) do
-      Specinfra::Backend::Docker.clear
-    end
+    after(:all, &:reset_docker_backend)
 
     it "includes the prometheus command" do
       expect(command('/opt/prometheus/prometheus --version').stderr)
@@ -53,9 +51,7 @@ describe 'prometheus' do
           started_indicator: "Server is ready to receive web requests.")
     end
 
-    after(:all) do
-      Specinfra::Backend::Docker.clear
-    end
+    after(:all, &:reset_docker_backend)
 
     it "runs prometheus" do
       expect(process('/opt/prometheus/prometheus')).to be_running
@@ -106,9 +102,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'uses the default configuration' do
         prometheus_config = file('/opt/prometheus/prometheus.yml').content
@@ -142,15 +136,123 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'uses the default configuration' do
         prometheus_config = file('/opt/prometheus/prometheus.yml').content
 
         expect(prometheus_config)
             .to(eq(File.read('spec/fixtures/custom-prometheus-config.yml')))
+      end
+    end
+  end
+
+  describe 'rules configuration' do
+    describe 'without rule file object paths provided' do
+      before(:all) do
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path)
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all, &:reset_docker_backend)
+
+      it 'does not include any rule files' do
+        rule_files = command('ls /opt/prometheus/rules').stdout
+
+        expect(rule_files).to(eq(""))
+      end
+    end
+
+    describe 'with one rule file object path provided' do
+      before(:all) do
+        rule_file_1_object_path = "#{s3_bucket_path}/rule_file_1.yml"
+
+        create_object(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: rule_file_1_object_path,
+            content: File.read('spec/fixtures/rule-file-1.yml'))
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path,
+            env: {
+                "PROMETHEUS_RULE_FILE_OBJECT_PATHS" =>
+                    "#{rule_file_1_object_path}"
+            })
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all, &:reset_docker_backend)
+
+      it 'fetches the specified rule file' do
+        rule_files = command('ls /opt/prometheus/rules').stdout
+        rule_file_content =
+            command('cat /opt/prometheus/rules/rule_file_1.yml').stdout
+
+        expect(rule_files).to(eq("rule_file_1.yml\n"))
+        expect(rule_file_content)
+            .to(eq(File.read('spec/fixtures/rule-file-1.yml')))
+      end
+    end
+
+    describe 'with many rule file object paths provided' do
+      before(:all) do
+        rule_file_1_object_path = "#{s3_bucket_path}/rule_file_1.yml"
+        rule_file_2_object_path = "#{s3_bucket_path}/rule_file_2.yml"
+
+        create_object(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: rule_file_1_object_path,
+            content: File.read('spec/fixtures/rule-file-1.yml'))
+        create_object(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: rule_file_2_object_path,
+            content: File.read('spec/fixtures/rule-file-2.yml'))
+        create_env_file(
+            endpoint_url: s3_endpoint_url,
+            region: s3_bucket_region,
+            bucket_path: s3_bucket_path,
+            object_path: s3_env_file_object_path,
+            env: {
+                "PROMETHEUS_RULE_FILE_OBJECT_PATHS" =>
+                    "#{rule_file_1_object_path},#{rule_file_2_object_path}"
+            })
+
+        execute_docker_entrypoint(
+            started_indicator: "Server is ready to receive web requests.")
+      end
+
+      after(:all, &:reset_docker_backend)
+
+      it 'fetches the specified rule files' do
+        rule_files = command('ls /opt/prometheus/rules').stdout
+        rule_file_1_content =
+            command('cat /opt/prometheus/rules/rule_file_1.yml').stdout
+        rule_file_2_content =
+            command('cat /opt/prometheus/rules/rule_file_2.yml').stdout
+
+        expect(rule_files).to(eq(
+            "rule_file_1.yml\n" +
+                "rule_file_2.yml\n"))
+        expect(rule_file_1_content)
+            .to(eq(File.read('spec/fixtures/rule-file-1.yml')))
+        expect(rule_file_2_content)
+            .to(eq(File.read('spec/fixtures/rule-file-2.yml')))
       end
     end
   end
@@ -168,9 +270,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'stores tsdb in /var/lib/prometheus' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -193,9 +293,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'stores tsdb in /var/lib/prometheus' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -215,9 +313,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'retains samples for 30 days' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -240,9 +336,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'retains samples for the specified duration' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -264,9 +358,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'does not include the external URL flag' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -290,9 +382,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'uses the specified external URL' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -314,9 +404,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'does not include the enable admin API flag' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -339,9 +427,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'includes the enable admin API flag' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -364,9 +450,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'does not include the enable admin API flag' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -388,9 +472,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'does not include the enable lifecycle flag' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -413,9 +495,7 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'includes the enable lifecycle flag' do
         expect(process('/opt/prometheus/prometheus').args)
@@ -438,15 +518,18 @@ describe 'prometheus' do
             started_indicator: "Server is ready to receive web requests.")
       end
 
-      after(:all) do
-        Specinfra::Backend::Docker.clear
-      end
+      after(:all, &:reset_docker_backend)
 
       it 'does not include the enable lifecycle flag' do
         expect(process('/opt/prometheus/prometheus').args)
             .not_to(match(/--web.enable-lifecycle/))
       end
     end
+  end
+
+  def reset_docker_backend
+    Specinfra::Backend::Docker.instance.send :cleanup_container
+    Specinfra::Backend::Docker.clear
   end
 
   def create_env_file(opts)
@@ -474,7 +557,7 @@ describe 'prometheus' do
         'mb ' +
         "#{opts[:bucket_path]} " +
         "--region \"#{opts[:region]}\"")
-    execute_command("echo -n \"#{opts[:content]}\" | " +
+    execute_command("echo -n #{Shellwords.escape(opts[:content])} | " +
         'aws ' +
         "--endpoint-url #{opts[:endpoint_url]} " +
         's3 ' +
@@ -492,7 +575,7 @@ describe 'prometheus' do
         "docker-entrypoint.sh > #{logfile_path} 2>&1 &")
 
     begin
-      Octopoller.poll(timeout: 15) do
+      Octopoller.poll(timeout: 5) do
         docker_entrypoint_log = command("cat #{logfile_path}").stdout
         docker_entrypoint_log =~ /#{opts[:started_indicator]}/ ?
             docker_entrypoint_log :
