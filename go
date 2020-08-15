@@ -15,6 +15,7 @@ missing_dependency="no"
 [ -n "$GO_SKIP_CHECKS" ] && skip_checks="yes"
 [ -n "$GO_OFFLINE" ] && offline="yes"
 
+export RUBYOPT='-W0'
 
 if [[ "$skip_checks" = "no" ]]; then
     echo "Checking for system dependencies."
