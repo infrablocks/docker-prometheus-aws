@@ -278,9 +278,9 @@ describe 'prometheus' do
 
       after(:all, &:reset_docker_backend)
 
-      it 'stores tsdb in /var/lib/prometheus' do
+      it 'stores tsdb in /var/opt/prometheus' do
         expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--storage\.tsdb\.path=\/var\/lib\/prometheus/))
+            .to(match(/--storage\.tsdb\.path=\/var\/opt\/prometheus/))
       end
     end
 

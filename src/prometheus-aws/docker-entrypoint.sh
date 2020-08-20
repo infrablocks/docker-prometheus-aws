@@ -3,7 +3,7 @@
 [ "$TRACE" = "yes" ] && set -x
 set -e
 
-storage_tsdb_path="${PROMETHEUS_STORAGE_TSDB_PATH:-/var/lib/prometheus}"
+storage_tsdb_path="${PROMETHEUS_STORAGE_TSDB_PATH:-/var/opt/prometheus}"
 storage_tsdb_retention_time="${PROMETHEUS_STORAGE_TSDB_RETENTION_TIME:-30d}"
 
 additional_options=()
