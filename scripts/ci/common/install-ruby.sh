@@ -4,10 +4,12 @@
 set -e
 set -o pipefail
 
-apk --update add \
-    ca-certificates \
-    ruby \
-    ruby-bundler \
-    ruby-json
+apk \
+    --update-cache \
+    add \
+        ca-certificates \
+        ruby \
+        ruby-bundler \
+        ruby-json
 
 echo 'gem: --no-document' > /etc/gemrc

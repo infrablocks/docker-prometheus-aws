@@ -4,5 +4,7 @@
 set -e
 set -o pipefail
 
-apk --update add \
-    bash
+apk \
+    --update-cache \
+    add \
+        bash

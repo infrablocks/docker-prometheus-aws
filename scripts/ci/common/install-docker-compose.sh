@@ -4,5 +4,7 @@
 set -e
 set -o pipefail
 
-apk --update add \
-    docker-compose
+apk \
+    --update-cache \
+    add \
+        docker-compose
