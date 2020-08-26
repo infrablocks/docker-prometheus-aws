@@ -35,7 +35,7 @@ describe 'prometheus' do
 
     it "includes the prometheus command" do
       expect(command('/opt/prometheus/prometheus --version').stderr)
-          .to match /2.20.0/
+          .to match /2.20.1/
     end
   end
 
