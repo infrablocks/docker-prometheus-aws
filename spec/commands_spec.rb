@@ -16,7 +16,7 @@ describe 'commands' do
 
   it "includes the prometheus command" do
     expect(command('/opt/prometheus/prometheus --version').stderr)
-        .to match /2.20.1/
+        .to match /2.22.0/
   end
 
   def reset_docker_backend

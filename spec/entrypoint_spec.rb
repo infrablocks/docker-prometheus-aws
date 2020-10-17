@@ -53,22 +53,6 @@ describe 'entrypoint' do
           .to(match(/--config\.file=\/opt\/prometheus\/prometheus.yml/))
     end
 
-    it 'configures and enables the web UI' do
-      args = process('/opt/prometheus/prometheus').args
-
-      expect(args).to(match(
-          /--web.console.libraries=\/opt\/prometheus\/console_libraries/))
-      expect(args).to(match(
-          /--web.console.templates=\/opt\/prometheus\/consoles/))
-    end
-
-    it 'disables the TSDB lockfile' do
-      args = process('/opt/prometheus/prometheus').args
-
-      expect(args).to(match(
-          /--storage.tsdb.no-lockfile/))
-    end
-
     it 'uses the JSON log format' do
       args = process('/opt/prometheus/prometheus').args
 
@@ -96,6 +80,32 @@ describe 'entrypoint' do
     it 'retains samples for 30 days' do
       expect(process('/opt/prometheus/prometheus').args)
           .to(match(/--storage\.tsdb\.retention\.time=30d/))
+    end
+
+    it 'does not specify a TSDB minimum block duration' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .not_to(match(/--storage\.tsdb\.min-block-duration/))
+    end
+
+    it 'does not specify a TSDB maximum block duration' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .not_to(match(/--storage\.tsdb\.max-block-duration/))
+    end
+
+    it 'disables the TSDB lockfile' do
+      args = process('/opt/prometheus/prometheus').args
+
+      expect(args).to(match(
+          /--storage.tsdb.no-lockfile/))
+    end
+
+    it 'configures and enables the web UI' do
+      args = process('/opt/prometheus/prometheus').args
+
+      expect(args).to(match(
+          /--web.console.libraries=\/opt\/prometheus\/console_libraries/))
+      expect(args).to(match(
+          /--web.console.templates=\/opt\/prometheus\/consoles/))
     end
 
     it 'does not include the external URL flag' do
@@ -258,7 +268,9 @@ describe 'entrypoint' do
           object_path: s3_env_file_object_path,
           env: {
               "PROMETHEUS_STORAGE_TSDB_PATH" => "/data",
-              "PROMETHEUS_STORAGE_TSDB_RETENTION_TIME" => "10d"
+              "PROMETHEUS_STORAGE_TSDB_RETENTION_TIME" => "10d",
+              "PROMETHEUS_STORAGE_TSDB_MINIMUM_BLOCK_DURATION" => "2h",
+              "PROMETHEUS_STORAGE_TSDB_MAXIMUM_BLOCK_DURATION" => "2h",
           })
 
       execute_docker_entrypoint(
@@ -267,14 +279,24 @@ describe 'entrypoint' do
 
     after(:all, &:reset_docker_backend)
 
-    it 'stores tsdb in /var/lib/prometheus' do
+    it 'uses the provided TSDB path' do
       expect(process('/opt/prometheus/prometheus').args)
           .to(match(/--storage\.tsdb\.path=\/data/))
     end
 
-    it 'retains samples for the specified duration' do
+    it 'uses the provided TSDB retention time' do
       expect(process('/opt/prometheus/prometheus').args)
           .to(match(/--storage\.tsdb\.retention\.time=10d/))
+    end
+
+    it 'uses the provided TSDB minimum block duration' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--storage\.tsdb\.min-block-duration=2h/))
+    end
+
+    it 'uses the provided TSDB maximum block duration' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--storage\.tsdb\.max-block-duration=2h/))
     end
   end
 
