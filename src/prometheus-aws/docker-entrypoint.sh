@@ -15,13 +15,13 @@ if [[ -n "${PROMETHEUS_WEB_EXTERNAL_URL}" ]]; then
   additional_options+=("${web_external_url_option}")
 fi
 
-if [[ "${PROMETHEUS_WEB_ENABLE_ADMIN_API}" = "true" ]]; then
+if [[ "${PROMETHEUS_WEB_ADMIN_API_ENABLED}" = "yes" ]]; then
   web_enable_admin_api_option="--web.enable-admin-api"
 
   additional_options+=("${web_enable_admin_api_option}")
 fi
 
-if [[ "${PROMETHEUS_WEB_ENABLE_LIFECYCLE}" = "true" ]]; then
+if [[ "${PROMETHEUS_WEB_LIFECYCLE_ENABLED}" = "yes" ]]; then
   web_enable_lifecycle_option="--web.enable-lifecycle"
 
   additional_options+=("${web_enable_lifecycle_option}")

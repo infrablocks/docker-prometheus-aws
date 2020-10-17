@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe 'prometheus' do
+describe 'entrypoint' do
   metadata_service_url = 'http://metadata:1338'
   s3_endpoint_url = 'http://s3:4566'
   s3_bucket_region = 'us-east-1'
@@ -30,16 +30,7 @@ describe 'prometheus' do
     set :docker_container_create_options, extra
   end
 
-  describe 'command' do
-    after(:all, &:reset_docker_backend)
-
-    it "includes the prometheus command" do
-      expect(command('/opt/prometheus/prometheus --version').stderr)
-          .to match /2.20.1/
-    end
-  end
-
-  describe 'entrypoint' do
+  describe 'by default' do
     before(:all) do
       create_env_file(
           endpoint_url: s3_endpoint_url,
@@ -84,6 +75,44 @@ describe 'prometheus' do
       expect(args).to(match(/--log.format=json/))
     end
 
+    it 'uses the default prometheus configuration' do
+      prometheus_config = file('/opt/prometheus/prometheus.yml').content
+
+      expect(prometheus_config)
+          .to(eq(File.read('spec/fixtures/default-prometheus-config.yml')))
+    end
+
+    it 'does not include any rule files' do
+      rule_files = command('ls /opt/prometheus/rules').stdout
+
+      expect(rule_files).to(eq(""))
+    end
+
+    it 'stores tsdb in /var/opt/prometheus' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--storage\.tsdb\.path=\/var\/opt\/prometheus/))
+    end
+
+    it 'retains samples for 30 days' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--storage\.tsdb\.retention\.time=30d/))
+    end
+
+    it 'does not include the external URL flag' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .not_to(match(/--web.external-url/))
+    end
+
+    it 'does not include the enable admin API flag' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .not_to(match(/--web.enable-admin-api/))
+    end
+
+    it 'does not include the enable lifecycle flag' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .not_to(match(/--web.enable-lifecycle/))
+    end
+
     it 'has instance metadata available in its environment' do
       pid = process('/opt/prometheus/prometheus').pid
       environment_contents =
@@ -95,29 +124,7 @@ describe 'prometheus' do
     end
   end
 
-  describe 'prometheus configuration' do
-    describe 'without configuration object path provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'uses the default configuration' do
-        prometheus_config = file('/opt/prometheus/prometheus.yml').content
-
-        expect(prometheus_config)
-            .to(eq(File.read('spec/fixtures/default-prometheus-config.yml')))
-      end
-    end
-
+  describe 'with prometheus configuration' do
     describe 'with configuration object path provided' do
       before(:all) do
         configuration_file_object_path = "#{s3_bucket_path}/prometheus.yml"
@@ -153,28 +160,7 @@ describe 'prometheus' do
     end
   end
 
-  describe 'rules configuration' do
-    describe 'without rule file object paths provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'does not include any rule files' do
-        rule_files = command('ls /opt/prometheus/rules').stdout
-
-        expect(rule_files).to(eq(""))
-      end
-    end
-
+  describe 'with rules configuration' do
     describe 'with one rule file object path provided' do
       before(:all) do
         rule_file_1_object_path = "#{s3_bucket_path}/rule_file_1.yml"
@@ -263,116 +249,37 @@ describe 'prometheus' do
     end
   end
 
-  describe 'storage' do
-    describe 'without tsdb storage location provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
+  describe 'with storage configuration' do
+    before(:all) do
+      create_env_file(
+          endpoint_url: s3_endpoint_url,
+          region: s3_bucket_region,
+          bucket_path: s3_bucket_path,
+          object_path: s3_env_file_object_path,
+          env: {
+              "PROMETHEUS_STORAGE_TSDB_PATH" => "/data",
+              "PROMETHEUS_STORAGE_TSDB_RETENTION_TIME" => "10d"
+          })
 
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'stores tsdb in /var/opt/prometheus' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--storage\.tsdb\.path=\/var\/opt\/prometheus/))
-      end
+      execute_docker_entrypoint(
+          started_indicator: "Server is ready to receive web requests.")
     end
 
-    describe 'with tsdb storage location provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path,
-            env: {
-                "PROMETHEUS_STORAGE_TSDB_PATH" => "/data"
-            })
+    after(:all, &:reset_docker_backend)
 
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'stores tsdb in /var/lib/prometheus' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--storage\.tsdb\.path=\/data/))
-      end
+    it 'stores tsdb in /var/lib/prometheus' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--storage\.tsdb\.path=\/data/))
     end
 
-    describe 'without tsdb storage retention provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'retains samples for 30 days' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--storage\.tsdb\.retention\.time=30d/))
-      end
-    end
-
-    describe 'with tsdb storage retention provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path,
-            env: {
-                "PROMETHEUS_STORAGE_TSDB_RETENTION_TIME" => "10d"
-            })
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'retains samples for the specified duration' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--storage\.tsdb\.retention\.time=10d/))
-      end
+    it 'retains samples for the specified duration' do
+      expect(process('/opt/prometheus/prometheus').args)
+          .to(match(/--storage\.tsdb\.retention\.time=10d/))
     end
   end
 
-  describe 'console' do
-    describe 'without external URL provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'does not include the external URL flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .not_to(match(/--web.external-url/))
-      end
-    end
-
-    describe 'with external URL provided' do
+  describe 'with web configuration' do
+    describe 'for general options' do
       before(:all) do
         create_env_file(
             endpoint_url: s3_endpoint_url,
@@ -395,140 +302,100 @@ describe 'prometheus' do
             .to(match(/--web.external-url=https:\/\/prometheus.example.com/))
       end
     end
-  end
 
-  describe 'admin API' do
-    describe 'without enable admin API flag provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
+    describe 'for admin API' do
+      describe 'when enabled' do
+        before(:all) do
+          create_env_file(
+              endpoint_url: s3_endpoint_url,
+              region: s3_bucket_region,
+              bucket_path: s3_bucket_path,
+              object_path: s3_env_file_object_path,
+              env: {
+                  "PROMETHEUS_WEB_ADMIN_API_ENABLED" => "yes"
+              })
 
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
+          execute_docker_entrypoint(
+              started_indicator: "Server is ready to receive web requests.")
+        end
+
+        after(:all, &:reset_docker_backend)
+
+        it 'includes the enable admin API flag' do
+          expect(process('/opt/prometheus/prometheus').args)
+              .to(match(/--web.enable-admin-api/))
+        end
       end
 
-      after(:all, &:reset_docker_backend)
+      describe 'when disabled' do
+        before(:all) do
+          create_env_file(
+              endpoint_url: s3_endpoint_url,
+              region: s3_bucket_region,
+              bucket_path: s3_bucket_path,
+              object_path: s3_env_file_object_path,
+              env: {
+                  "PROMETHEUS_WEB_ADMIN_API_ENABLED" => "no"
+              })
 
-      it 'does not include the enable admin API flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .not_to(match(/--web.enable-admin-api/))
-      end
-    end
+          execute_docker_entrypoint(
+              started_indicator: "Server is ready to receive web requests.")
+        end
 
-    describe 'with enable admin API flag provided and true' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path,
-            env: {
-                "PROMETHEUS_WEB_ENABLE_ADMIN_API" => "true"
-            })
+        after(:all, &:reset_docker_backend)
 
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'includes the enable admin API flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--web.enable-admin-api/))
-      end
-    end
-
-    describe 'with enable admin API flag provided and not true' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path,
-            env: {
-                "PROMETHEUS_WEB_ENABLE_ADMIN_API" => "false"
-            })
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'does not include the enable admin API flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .not_to(match(/--web.enable-admin-api/))
-      end
-    end
-  end
-
-  describe 'lifecycle' do
-    describe 'without enable lifecycle flag provided' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path)
-
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'does not include the enable lifecycle flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .not_to(match(/--web.enable-lifecycle/))
+        it 'does not include the enable admin API flag' do
+          expect(process('/opt/prometheus/prometheus').args)
+              .not_to(match(/--web.enable-admin-api/))
+        end
       end
     end
 
-    describe 'with enable lifecycle flag provided and true' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path,
-            env: {
-                "PROMETHEUS_WEB_ENABLE_LIFECYCLE" => "true"
-            })
+    describe 'for lifecycle' do
+      describe 'when enabled' do
+        before(:all) do
+          create_env_file(
+              endpoint_url: s3_endpoint_url,
+              region: s3_bucket_region,
+              bucket_path: s3_bucket_path,
+              object_path: s3_env_file_object_path,
+              env: {
+                  "PROMETHEUS_WEB_LIFECYCLE_ENABLED" => "yes"
+              })
 
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
+          execute_docker_entrypoint(
+              started_indicator: "Server is ready to receive web requests.")
+        end
+
+        after(:all, &:reset_docker_backend)
+
+        it 'includes the enable lifecycle flag' do
+          expect(process('/opt/prometheus/prometheus').args)
+              .to(match(/--web.enable-lifecycle/))
+        end
       end
 
-      after(:all, &:reset_docker_backend)
+      describe 'when disabled' do
+        before(:all) do
+          create_env_file(
+              endpoint_url: s3_endpoint_url,
+              region: s3_bucket_region,
+              bucket_path: s3_bucket_path,
+              object_path: s3_env_file_object_path,
+              env: {
+                  "PROMETHEUS_WEB_LIFECYCLE_ENABLED" => "no"
+              })
 
-      it 'includes the enable lifecycle flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .to(match(/--web.enable-lifecycle/))
-      end
-    end
+          execute_docker_entrypoint(
+              started_indicator: "Server is ready to receive web requests.")
+        end
 
-    describe 'with enable lifecycle flag provided and not true' do
-      before(:all) do
-        create_env_file(
-            endpoint_url: s3_endpoint_url,
-            region: s3_bucket_region,
-            bucket_path: s3_bucket_path,
-            object_path: s3_env_file_object_path,
-            env: {
-                "PROMETHEUS_WEB_ENABLE_LIFECYCLE" => "false"
-            })
+        after(:all, &:reset_docker_backend)
 
-        execute_docker_entrypoint(
-            started_indicator: "Server is ready to receive web requests.")
-      end
-
-      after(:all, &:reset_docker_backend)
-
-      it 'does not include the enable lifecycle flag' do
-        expect(process('/opt/prometheus/prometheus').args)
-            .not_to(match(/--web.enable-lifecycle/))
+        it 'does not include the enable lifecycle flag' do
+          expect(process('/opt/prometheus/prometheus').args)
+              .not_to(match(/--web.enable-lifecycle/))
+        end
       end
     end
   end
