@@ -8,7 +8,10 @@ if [[ -n "${PROMETHEUS_CONFIGURATION_FILE_OBJECT_PATH}" ]]; then
   fetch_file_from_s3 \
     "${AWS_S3_BUCKET_REGION}" \
     "${PROMETHEUS_CONFIGURATION_FILE_OBJECT_PATH}" \
-    /opt/prometheus/prometheus.yml
+    /opt/prometheus/conf/prometheus.yml.tpl
+  envsubst \
+    < /opt/prometheus/conf/prometheus.yml.tpl \
+    > /opt/prometheus/conf/prometheus.yml
 else
   var_name="PROMETHEUS_CONFIGURATION_FILE_OBJECT_PATH"
   echo "No ${var_name} provided. Using default configuration."
@@ -20,7 +23,7 @@ if [[ -n "${PROMETHEUS_RULE_FILE_OBJECT_PATHS}" ]]; then
     fetch_file_from_s3 \
       "${AWS_S3_BUCKET_REGION}" \
       "${object_path}" \
-      /opt/prometheus/rules/
+      /opt/prometheus/conf/rules/
   done
 else
   var_name="PROMETHEUS_RULE_FILE_OBJECT_PATHS"

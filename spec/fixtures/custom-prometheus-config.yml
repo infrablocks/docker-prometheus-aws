@@ -3,6 +3,9 @@ global:
   evaluation_interval: 5s
   scrape_timeout: 5s
 
+  external_labels:
+    availability_zone: "${SELF_AVAILABILITY_ZONE}"
+
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:

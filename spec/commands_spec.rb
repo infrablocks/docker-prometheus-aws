@@ -15,8 +15,13 @@ describe 'commands' do
   after(:all, &:reset_docker_backend)
 
   it "includes the prometheus command" do
-    expect(command('/opt/prometheus/prometheus --version').stderr)
+    expect(command('/opt/prometheus/bin/prometheus --version').stderr)
         .to match /2.22.0/
+  end
+
+  it 'includes the envsubst command' do
+    expect(command('envsubst --version').stdout)
+        .to(match(/0.20.2/))
   end
 
   def reset_docker_backend

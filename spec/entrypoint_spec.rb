@@ -45,62 +45,62 @@ describe 'entrypoint' do
     after(:all, &:reset_docker_backend)
 
     it "runs prometheus" do
-      expect(process('/opt/prometheus/prometheus')).to be_running
+      expect(process('/opt/prometheus/bin/prometheus')).to be_running
     end
 
     it 'points at the correct configuration file' do
-      expect(process('/opt/prometheus/prometheus').args)
-          .to(match(/--config\.file=\/opt\/prometheus\/prometheus.yml/))
+      expect(process('/opt/prometheus/bin/prometheus').args)
+          .to(match(/--config\.file=\/opt\/prometheus\/conf\/prometheus.yml/))
     end
 
     it 'uses the JSON log format' do
-      args = process('/opt/prometheus/prometheus').args
+      args = process('/opt/prometheus/bin/prometheus').args
 
       expect(args).to(match(/--log.format=json/))
     end
 
     it 'uses the default prometheus configuration' do
-      prometheus_config = file('/opt/prometheus/prometheus.yml').content
+      prometheus_config = file('/opt/prometheus/conf/prometheus.yml').content
 
       expect(prometheus_config)
           .to(eq(File.read('spec/fixtures/default-prometheus-config.yml')))
     end
 
     it 'does not include any rule files' do
-      rule_files = command('ls /opt/prometheus/rules').stdout
+      rule_files = command('ls /opt/prometheus/conf/rules').stdout
 
       expect(rule_files).to(eq(""))
     end
 
     it 'stores tsdb in /var/opt/prometheus' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .to(match(/--storage\.tsdb\.path=\/var\/opt\/prometheus/))
     end
 
     it 'retains samples for 30 days' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .to(match(/--storage\.tsdb\.retention\.time=30d/))
     end
 
     it 'does not specify a TSDB minimum block duration' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .not_to(match(/--storage\.tsdb\.min-block-duration/))
     end
 
     it 'does not specify a TSDB maximum block duration' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .not_to(match(/--storage\.tsdb\.max-block-duration/))
     end
 
     it 'disables the TSDB lockfile' do
-      args = process('/opt/prometheus/prometheus').args
+      args = process('/opt/prometheus/bin/prometheus').args
 
       expect(args).to(match(
           /--storage.tsdb.no-lockfile/))
     end
 
     it 'configures and enables the web UI' do
-      args = process('/opt/prometheus/prometheus').args
+      args = process('/opt/prometheus/bin/prometheus').args
 
       expect(args).to(match(
           /--web.console.libraries=\/opt\/prometheus\/console_libraries/))
@@ -109,28 +109,29 @@ describe 'entrypoint' do
     end
 
     it 'does not include the external URL flag' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .not_to(match(/--web.external-url/))
     end
 
     it 'does not include the enable admin API flag' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .not_to(match(/--web.enable-admin-api/))
     end
 
     it 'does not include the enable lifecycle flag' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .not_to(match(/--web.enable-lifecycle/))
     end
 
     it 'has instance metadata available in its environment' do
-      pid = process('/opt/prometheus/prometheus').pid
+      pid = process('/opt/prometheus/bin/prometheus').pid
       environment_contents =
           command("tr '\\0' '\\n' < /proc/#{pid}/environ").stdout
-      environment = Dotenv::Parser.call(environment_contents)
 
-      expect(environment)
-          .to(include('SELF_IP', 'SELF_ID', 'SELF_HOSTNAME'))
+      expect(environment_contents).to(match(/^SELF_IP/))
+      expect(environment_contents).to(match(/^SELF_ID/))
+      expect(environment_contents).to(match(/^SELF_HOSTNAME/))
+      expect(environment_contents).to(match(/^SELF_AVAILABILITY_ZONE/))
     end
   end
 
@@ -161,11 +162,13 @@ describe 'entrypoint' do
 
       after(:all, &:reset_docker_backend)
 
-      it 'uses the default configuration' do
-        prometheus_config = file('/opt/prometheus/prometheus.yml').content
+      it 'uses the provided configuration file' do
+        expected = File.read('spec/fixtures/custom-prometheus-config.yml')
+            .gsub(/\${SELF_AVAILABILITY_ZONE}/, "us-east-1a")
+        actual = file('/opt/prometheus/conf/prometheus.yml')
+            .content
 
-        expect(prometheus_config)
-            .to(eq(File.read('spec/fixtures/custom-prometheus-config.yml')))
+        expect(actual).to(eq(expected))
       end
     end
   end
@@ -198,9 +201,9 @@ describe 'entrypoint' do
       after(:all, &:reset_docker_backend)
 
       it 'fetches the specified rule file' do
-        rule_files = command('ls /opt/prometheus/rules').stdout
+        rule_files = command('ls /opt/prometheus/conf/rules').stdout
         rule_file_content =
-            command('cat /opt/prometheus/rules/rule_file_1.yml').stdout
+            command('cat /opt/prometheus/conf/rules/rule_file_1.yml').stdout
 
         expect(rule_files).to(eq("rule_file_1.yml\n"))
         expect(rule_file_content)
@@ -242,11 +245,11 @@ describe 'entrypoint' do
       after(:all, &:reset_docker_backend)
 
       it 'fetches the specified rule files' do
-        rule_files = command('ls /opt/prometheus/rules').stdout
+        rule_files = command('ls /opt/prometheus/conf/rules').stdout
         rule_file_1_content =
-            command('cat /opt/prometheus/rules/rule_file_1.yml').stdout
+            command('cat /opt/prometheus/conf/rules/rule_file_1.yml').stdout
         rule_file_2_content =
-            command('cat /opt/prometheus/rules/rule_file_2.yml').stdout
+            command('cat /opt/prometheus/conf/rules/rule_file_2.yml').stdout
 
         expect(rule_files).to(eq(
             "rule_file_1.yml\n" +
@@ -280,22 +283,22 @@ describe 'entrypoint' do
     after(:all, &:reset_docker_backend)
 
     it 'uses the provided TSDB path' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .to(match(/--storage\.tsdb\.path=\/data/))
     end
 
     it 'uses the provided TSDB retention time' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .to(match(/--storage\.tsdb\.retention\.time=10d/))
     end
 
     it 'uses the provided TSDB minimum block duration' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .to(match(/--storage\.tsdb\.min-block-duration=2h/))
     end
 
     it 'uses the provided TSDB maximum block duration' do
-      expect(process('/opt/prometheus/prometheus').args)
+      expect(process('/opt/prometheus/bin/prometheus').args)
           .to(match(/--storage\.tsdb\.max-block-duration=2h/))
     end
   end
@@ -320,7 +323,7 @@ describe 'entrypoint' do
       after(:all, &:reset_docker_backend)
 
       it 'uses the specified external URL' do
-        expect(process('/opt/prometheus/prometheus').args)
+        expect(process('/opt/prometheus/bin/prometheus').args)
             .to(match(/--web.external-url=https:\/\/prometheus.example.com/))
       end
     end
@@ -344,7 +347,7 @@ describe 'entrypoint' do
         after(:all, &:reset_docker_backend)
 
         it 'includes the enable admin API flag' do
-          expect(process('/opt/prometheus/prometheus').args)
+          expect(process('/opt/prometheus/bin/prometheus').args)
               .to(match(/--web.enable-admin-api/))
         end
       end
@@ -367,7 +370,7 @@ describe 'entrypoint' do
         after(:all, &:reset_docker_backend)
 
         it 'does not include the enable admin API flag' do
-          expect(process('/opt/prometheus/prometheus').args)
+          expect(process('/opt/prometheus/bin/prometheus').args)
               .not_to(match(/--web.enable-admin-api/))
         end
       end
@@ -392,7 +395,7 @@ describe 'entrypoint' do
         after(:all, &:reset_docker_backend)
 
         it 'includes the enable lifecycle flag' do
-          expect(process('/opt/prometheus/prometheus').args)
+          expect(process('/opt/prometheus/bin/prometheus').args)
               .to(match(/--web.enable-lifecycle/))
         end
       end
@@ -415,7 +418,7 @@ describe 'entrypoint' do
         after(:all, &:reset_docker_backend)
 
         it 'does not include the enable lifecycle flag' do
-          expect(process('/opt/prometheus/prometheus').args)
+          expect(process('/opt/prometheus/bin/prometheus').args)
               .not_to(match(/--web.enable-lifecycle/))
         end
       end
@@ -431,7 +434,7 @@ describe 'entrypoint' do
     create_object(opts
         .merge(content: (opts[:env] || {})
             .to_a
-            .collect { |item| " #{item[0]}=\"#{item[1]}\"" }
+            .collect { |item| "#{item[0]}=\"#{item[1]}\"" }
             .join("\n")))
   end
 

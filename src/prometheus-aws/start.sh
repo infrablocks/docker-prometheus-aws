@@ -36,8 +36,8 @@ fi
 
 echo "Running prometheus."
 # shellcheck disable=SC2086
-exec /opt/prometheus/prometheus \
-    --config.file="/opt/prometheus/prometheus.yml" \
+exec /opt/prometheus/bin/prometheus \
+    --config.file="/opt/prometheus/conf/prometheus.yml" \
     \
     --storage.tsdb.path="${storage_tsdb_path}" \
     --storage.tsdb.retention.time="${storage_tsdb_retention_time}" \
