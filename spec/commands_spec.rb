@@ -21,7 +21,7 @@ describe 'commands' do
 
   it 'includes the envsubst command' do
     expect(command('envsubst --version').stdout)
-        .to(match(/0.20.2/))
+        .to(match(/0.21/))
   end
 
   def reset_docker_backend
