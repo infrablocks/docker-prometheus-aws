@@ -23,6 +23,7 @@ run/logs/
 .tmp
 .rakeTasks
 .rspec_status
+.bundle
 
 # Terraform
 .terraform

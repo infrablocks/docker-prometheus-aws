@@ -4,7 +4,5 @@
 set -e
 set -o pipefail
 
-apk \
-    --update-cache \
-    add \
-        docker-compose
+apt-get update
+apt-get install -y --no-install-recommends docker-compose
