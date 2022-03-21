@@ -1,6 +1,8 @@
 version: 2.1
+
 orbs:
   slack: circleci/slack@4.8.3
+
 jobs:
   test:
     working_directory: ~/source
@@ -24,6 +26,7 @@ jobs:
           event: pass
           channel: builds
           template: SLACK_SUCCESS_NOTIFICATION
+
   prerelease:
     working_directory: ~/source
     docker:
@@ -45,6 +48,7 @@ jobs:
           event: pass
           channel: builds
           template: SLACK_SUCCESS_NOTIFICATION
+
   release:
     working_directory: ~/source
     docker:
@@ -66,6 +70,7 @@ jobs:
           event: pass
           channel: builds
           template: SLACK_SUCCESS_NOTIFICATION
+
   merge_pull_request:
     working_directory: ~/source
     docker:
