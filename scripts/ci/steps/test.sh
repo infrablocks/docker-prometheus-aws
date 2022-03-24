@@ -13,4 +13,5 @@ cd "$PROJECT_DIR"
 
 git crypt unlock
 
+./go test:code:check
 ./go test:integration

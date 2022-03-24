@@ -1,9 +1,11 @@
+# frozen_string_literal: true
+
 require 'spec_helper'
 
 describe 'commands' do
   image = 'prometheus-aws:latest'
   extra = {
-      'Entrypoint' => '/bin/sh',
+    'Entrypoint' => '/bin/sh'
   }
 
   before(:all) do
@@ -14,14 +16,14 @@ describe 'commands' do
 
   after(:all, &:reset_docker_backend)
 
-  it "includes the prometheus command" do
+  it 'includes the prometheus command' do
     expect(command('/opt/prometheus/bin/prometheus --version').stderr)
-        .to match /2.22.0/
+      .to match(/2.22.0/)
   end
 
   it 'includes the envsubst command' do
     expect(command('envsubst --version').stdout)
-        .to(match(/0.21/))
+      .to(match(/0.21/))
   end
 
   def reset_docker_backend
