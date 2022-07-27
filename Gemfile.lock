@@ -1233,7 +1233,7 @@ GEM
     docker-api (2.2.0)
       excon (>= 0.47.0)
       multi_json
-    dotenv (2.7.6)
+    dotenv (2.8.0)
     excon (0.92.1)
     faraday (1.10.0)
       faraday-em_http (~> 1.0)
