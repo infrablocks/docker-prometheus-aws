@@ -1,6 +1,6 @@
-FROM infrablocks/alpine-aws-s3-config:0.23.0-rc.8
+FROM infrablocks/alpine-aws-s3-config:0.23.0
 
-ENV PROMETHEUS_VERSION 2.22.0
+ENV PROMETHEUS_VERSION 2.41.0
 
 RUN apk add --update --no-cache \
     gettext

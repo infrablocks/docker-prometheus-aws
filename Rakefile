@@ -193,7 +193,7 @@ namespace :test do
     task check: [:rubocop]
 
     desc 'Attempt to automatically fix issues with the test code'
-    task fix: [:'rubocop:auto_correct']
+    task fix: [:'rubocop:autocorrect_all']
   end
 
   RSpec::Core::RakeTask.new(
