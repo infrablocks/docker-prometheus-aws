@@ -12,6 +12,7 @@
 vendor/
 build/
 dist/
+.direnv
 
 # OS
 .DS_Store
@@ -29,3 +30,6 @@ run/logs/
 .terraform
 *.tfstate
 *.tfstate.backup
+
+# State bucket state - remove this
+state/*
