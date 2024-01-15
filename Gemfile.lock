@@ -1511,7 +1511,7 @@ GEM
       faraday-net_http (>= 2.0, < 3.1)
       ruby2_keywords (>= 0.0.4)
     faraday-net_http (3.0.2)
-    git (1.19.0)
+    git (1.19.1)
       addressable (~> 2.8)
       rchardet (~> 1.8)
     hamster (3.0.0)
