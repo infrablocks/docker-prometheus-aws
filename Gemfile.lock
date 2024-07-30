@@ -1500,7 +1500,7 @@ GEM
     docker-api (2.2.0)
       excon (>= 0.47.0)
       multi_json
-    dotenv (2.8.1)
+    dotenv (3.1.2)
     down (5.4.1)
       addressable (~> 2.8)
     drb (2.2.1)
