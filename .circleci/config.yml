@@ -1,11 +1,15 @@
 version: 2.1
 
 orbs:
-  slack: circleci/slack@4.8.3
+  slack: circleci/slack@4.13.2
 
-defaults: &defaults
+base_container: &base_container
+  image: buildpack-deps:buster
+
+build_container: &build_container
+  resource_class: medium
   docker:
-    - image: ruby:3.1.1
+    - <<: *base_container
 
 slack_context: &slack_context
   context:
@@ -61,48 +65,74 @@ commands:
                 event: pass
                 channel: builds
                 template: SLACK_SUCCESS_NOTIFICATION
-  configure_docker:
+
+  configure_container_tools:
     steps:
       - run: ./scripts/ci/common/install-docker.sh
       - run: ./scripts/ci/common/install-docker-compose.sh
       - setup_remote_docker
-  configure_tools:
+
+  configure_build_tools:
+    steps:
+      - run: ./scripts/ci/common/install-slack-deps.sh
+      - restore_cache:
+          keys:
+            - asdf-dependencies-{{ arch }}-v2-{{ checksum ".tool-versions" }}
+            - asdf-dependencies-{{ arch }}-v2-
+      - run: ./scripts/ci/common/install-asdf.sh
+      - run: ./scripts/ci/common/configure-asdf.sh
+      - run: ./scripts/ci/common/install-asdf-dependencies.sh
+      - save_cache:
+          key: asdf-dependencies-{{ arch }}-v2-{{ checksum ".tool-versions" }}
+          paths:
+            - ~/.asdf
+
+  configure_secrets_tools:
     steps:
       - run: ./scripts/ci/common/install-git-crypt.sh
       - run: ./scripts/ci/common/install-gpg-key.sh
       - run: ./scripts/ci/common/configure-git.sh
-      - run: ./scripts/ci/common/install-orb-deps.sh
+
+  configure_release_tools:
+    steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:6bdebwGSQHrW9Ub6m17W729OSR5ei90G6Swu8GhlgEw"
+
+  configure_tools:
+    steps:
+      - configure_container_tools
+      - configure_build_tools
+      - configure_secrets_tools
+      - configure_release_tools
 
 jobs:
   test:
-    <<: *defaults
+    <<: *build_container
     steps:
       - checkout
-      - configure_docker
       - configure_tools
       - run: ./scripts/ci/steps/test.sh
       - notify
 
   prerelease:
-    <<: *defaults
+    <<: *build_container
     steps:
       - checkout
-      - configure_docker
       - configure_tools
       - run: ./scripts/ci/steps/prerelease.sh
       - notify
 
   release:
-    <<: *defaults
+    <<: *build_container
     steps:
       - checkout
-      - configure_docker
       - configure_tools
       - run: ./scripts/ci/steps/release.sh
       - notify
 
   merge_pull_request:
-    <<: *defaults
+    <<: *build_container
     steps:
       - checkout
       - configure_tools
@@ -114,21 +144,21 @@ workflows:
   pipeline:
     jobs:
       - test:
-          <<: *slack_context
           <<: *only_main_and_dependabot
-      - merge_pull_request:
           <<: *slack_context
+      - merge_pull_request:
           <<: *only_dependabot
+          <<: *slack_context
           requires:
             - test
       - prerelease:
-          <<: *slack_context
           <<: *only_main
+          <<: *slack_context
           requires:
             - test
       - slack/on-hold:
-          <<: *slack_context
           <<: *only_main
+          <<: *slack_context
           requires:
             - prerelease
           channel: release
@@ -140,7 +170,7 @@ workflows:
             - prerelease
             - slack/on-hold
       - release:
-          <<: *slack_context
           <<: *only_main
+          <<: *slack_context
           requires:
             - hold
