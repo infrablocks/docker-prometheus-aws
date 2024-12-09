@@ -1609,9 +1609,9 @@ GEM
       net-ssh (>= 2.6.5, < 8.0.0)
     net-ssh (7.2.3)
     net-telnet (0.2.0)
-    nokogiri (1.16.8-arm64-darwin)
+    nokogiri (1.17.0-arm64-darwin)
       racc (~> 1.4)
-    nokogiri (1.16.8-x86_64-linux)
+    nokogiri (1.17.0-x86_64-linux)
       racc (~> 1.4)
     octokit (8.1.0)
       base64
