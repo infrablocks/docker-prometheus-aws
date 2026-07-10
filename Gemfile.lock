@@ -1686,7 +1686,7 @@ GEM
     net-telnet (0.2.0)
     nokogiri (1.18.8-arm64-darwin)
       racc (~> 1.4)
-    nokogiri (1.18.8-x86_64-linux-gnu)
+    nokogiri (1.18.8-x86_64-linux)
       racc (~> 1.4)
     octokit (8.1.0)
       base64
@@ -1825,6 +1825,7 @@ PLATFORMS
   arm64-darwin-21
   arm64-darwin-22
   arm64-darwin-23
+  arm64-darwin-25
   x86_64-linux
 
 DEPENDENCIES
