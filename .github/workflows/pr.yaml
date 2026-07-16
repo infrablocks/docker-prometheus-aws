@@ -63,6 +63,11 @@ jobs:
         uses: infrablocks/github-actions/asdf_install@v1
       - name: Install secrets tools
         run: sudo apt-get update && sudo apt-get install -y git-crypt gnupg
+      - name: Show dirty files (debug)
+        run: |
+          ./go -T > /dev/null || true
+          git status --porcelain
+          git diff
       - name: Unlock git-crypt
         run: ./go git_crypt:unlock_with_encrypted_gpg_key
         env:
