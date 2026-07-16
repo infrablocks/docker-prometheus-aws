@@ -153,8 +153,8 @@ RakeGithub.define_repository_tasks(
 
   t.access_token = github_token
 
-  # Actions store only: nothing in pr.yaml unlocks git-crypt, so dependabot
-  # runs never need the passphrase.
+  # Actions store only: pr.yaml only unlocks git-crypt in jobs skipped for
+  # dependabot/fork PRs, so those runs never need the passphrase.
   t.secrets = [
     { name: 'ENCRYPTION_PASSPHRASE',
       value: File.read('config/secrets/ci/encryption.passphrase').chomp }
@@ -224,7 +224,11 @@ namespace :image do
 
     t.platform = 'linux/amd64'
 
-    t.tags = [latest_tag.to_s, 'latest']
+    t.tags = dynamic do
+      # IMAGE_TAGS lets PR builds publish throwaway tags without touching
+      # version tags or 'latest'.
+      ENV['IMAGE_TAGS']&.split(',') || [latest_tag.to_s, 'latest']
+    end
   end
 end
 
