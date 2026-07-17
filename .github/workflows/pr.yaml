@@ -1,0 +1,64 @@
+name: Pull Request
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        uses: infrablocks/github-actions/asdf_install@v1
+      - name: Check
+        run: ./go test:code:check
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ./go "slack:notify[${{ job.status }}]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install tools
+        uses: infrablocks/github-actions/asdf_install@v1
+      - name: Ensure docker-compose is available
+        run: ./scripts/ci/common/install-docker-compose.sh
+      - name: Test
+        run: ./go test:integration
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ./go "slack:notify[${{ job.status }}]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  merge-pull-request:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.actor == 'dependabot[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge pull request
+        # --subject restores the old merge-pull-request.sh's literal
+        # "[skip ci]" merge subject (D3 parity). GITHUB_TOKEN pushes don't
+        # trigger workflows anyway, but the marker keeps dependabot merges
+        # from auto-releasing if this token is ever swapped for a PAT/App
+        # token. PR title passed via env, never interpolated into the script.
+        run: gh pr merge --merge "$PR_URL" --subject "$PR_TITLE [skip ci]"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

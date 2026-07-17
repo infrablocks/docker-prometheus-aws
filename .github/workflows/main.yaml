@@ -1,0 +1,167 @@
+name: Main
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# Concurrency is JOB-level, on prerelease + release only (shared group), NOT
+# workflow-level: a run waiting on the release approval counts as the group's
+# in-progress occupant, so a workflow-level group would freeze ALL main CI
+# (check/test/prerelease of later pushes) for up to the 30-day approval
+# window. The approval itself lives on the slot-free release-gate job, so a
+# pending approval holds no slot. queue: max keeps every queued publish (the
+# default keeps only the newest pending) so close-together merges serialise
+# FIFO on tag operations instead of cancelling each other.
+# 'queue: max' — GA 2026-05-07: https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/
+# Gate/slot split pattern: https://github.com/orgs/community/discussions/17401
+
+# No custom loop-guard job: GitHub natively skips `on: push` workflows when
+# the head commit message contains `[skip ci]`, `[ci skip]`, `[no ci]`,
+# `[skip actions]` or `[actions skip]` — a superset of what the old
+# `skip-ci-check` job matched. Tag pushes from `version:*` never match
+# `on: push: branches: [main]` anyway, and the dependabot merge commit is
+# stamped `[ci skip]` and pushed with `GITHUB_TOKEN`, whose pushes never
+# trigger workflows; the custom job was triple redundancy. Repos have no
+# branch protection, so a skipped run vs no run makes no difference to
+# required checks.
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        uses: infrablocks/github-actions/asdf_install@v1
+      - name: Check
+        run: ./go test:code:check
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ./go "slack:notify[${{ job.status }}]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install tools
+        uses: infrablocks/github-actions/asdf_install@v1
+      - name: Ensure docker-compose is available
+        run: ./scripts/ci/common/install-docker-compose.sh
+      - name: Test
+        run: ./go test:integration
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ./go "slack:notify[${{ job.status }}]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  prerelease:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: main-tags
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install tools
+        uses: infrablocks/github-actions/asdf_install@v1
+      - name: Install secrets tools
+        run: ./scripts/ci/common/install-git-crypt.sh
+      - name: Unlock git-crypt
+        run: ./go git_crypt:unlock_with_encrypted_gpg_key
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.ENCRYPTION_PASSPHRASE }}
+      - name: Set CI git author
+        run: ./go repository:set_ci_author
+      - name: Bump version
+        run: ./go "version:bump[rc]"
+      - name: Publish pre-release image
+        run: ./go image:publish
+      - name: Notify Slack of release hold
+        continue-on-error: true
+        run: ./go "slack:notify[success,on_hold]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ./go "slack:notify[${{ job.status }}]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  release-gate:
+    # Approval-only job: carries the environment but NO concurrency group, so
+    # a pending approval never occupies the main-tags slot. Multiple pushes
+    # can await approval independently.
+    needs: [prerelease]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    steps:
+      - name: Assert release environment is protected
+        run: ./scripts/ci/common/assert-release-environment-protected.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release approved
+        run: "true"
+
+  release:
+    needs: [release-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: main-tags
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Install tools
+        uses: infrablocks/github-actions/asdf_install@v1
+      - name: Install secrets tools
+        run: ./scripts/ci/common/install-git-crypt.sh
+      - name: Unlock git-crypt
+        run: ./go git_crypt:unlock_with_encrypted_gpg_key
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.ENCRYPTION_PASSPHRASE }}
+      - name: Set CI git author
+        run: ./go repository:set_ci_author
+      - name: Pull latest main
+        # Approval can land long after the run starts; release publishes main
+        # as of approval time, not the tested SHA — parity with the old
+        # release.sh, which also pulled. prerelease.sh never pulled, so the
+        # prerelease job deliberately has no pull. --ff-only and running after
+        # Set CI git author: a fetch that isn't a fast-forward must fail
+        # loudly rather than attempt a merge commit (which, before the author
+        # step, died with "committer identity unknown").
+        run: git pull --ff-only
+      - name: Release
+        run: ./go version:release
+      - name: Publish release image
+        run: ./go image:publish
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: ./go "slack:notify[${{ job.status }}]"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
