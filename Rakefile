@@ -3,13 +3,13 @@
 require 'git'
 require 'os'
 require 'pathname'
-require 'rake_circle_ci'
 require 'rake_docker'
+require 'rake_factory/kernel_extensions'
 require 'rake_git'
 require 'rake_git_crypt'
 require 'rake_github'
 require 'rake_gpg'
-require 'rake_ssh'
+require 'rake_slack'
 require 'rake_terraform'
 require 'rspec/core/rake_task'
 require 'rubocop/rake_task'
@@ -86,13 +86,6 @@ namespace :encryption do
 end
 
 namespace :keys do
-  namespace :deploy do
-    RakeSSH.define_key_tasks(
-      path: 'config/secrets/ci/',
-      comment: 'maintainers@infrablocks.io'
-    )
-  end
-
   namespace :gpg do
     RakeGPG.define_generate_key_task(
       output_directory: 'config/secrets/ci',
@@ -118,7 +111,6 @@ namespace :secrets do
   desc 'Generate all generatable secrets.'
   task generate: %w[
     encryption:passphrase:generate
-    keys:deploy:generate
     keys:gpg:generate
   ]
 
@@ -142,52 +134,90 @@ namespace :library do
   task fix: [:'rubocop:autocorrect_all']
 end
 
-RakeCircleCI.define_project_tasks(
-  namespace: :circle_ci,
-  project_slug: 'github/infrablocks/docker-prometheus-aws'
-) do |t|
-  circle_ci_config =
-    YAML.load_file('config/secrets/circle_ci/config.yaml')
-
-  t.api_token = circle_ci_config['circle_ci_api_token']
-  t.environment_variables = {
-    ENCRYPTION_PASSPHRASE:
-        File.read('config/secrets/ci/encryption.passphrase')
-            .chomp
-  }
-  t.checkout_keys = []
-  t.ssh_keys = [
-    {
-      hostname: 'github.com',
-      private_key: File.read('config/secrets/ci/ssh.private')
-    }
-  ]
-end
-
+# rubocop:disable Metrics/BlockLength
 RakeGithub.define_repository_tasks(
   namespace: :github,
   repository: 'infrablocks/docker-prometheus-aws'
 ) do |t|
-  github_config =
-    YAML.load_file('config/secrets/github/config.yaml')
+  # Operator's ambient auth. Resolve once and fail fast: a missing,
+  # unauthenticated, or absent gh yields an empty string, which would
+  # otherwise surface later as an opaque Octokit 401. An empty or
+  # whitespace-only GITHUB_TOKEN is treated as absent — ENV.fetch only falls
+  # back when the var is unset, so read it explicitly and fall back on empty.
+  github_token = ENV['GITHUB_TOKEN'].to_s.strip
+  if github_token.empty?
+    github_token = begin
+      `gh auth token`
+    rescue Errno::ENOENT
+      ''
+    end.strip
+  end
+  if github_token.empty?
+    raise 'No GitHub token available: set GITHUB_TOKEN or run `gh auth login`'
+  end
 
-  t.access_token = github_config['github_personal_access_token']
-  t.deploy_keys = [
-    {
-      title: 'CircleCI',
-      public_key: File.read('config/secrets/ci/ssh.public')
-    }
+  t.access_token = github_token
+
+  # Actions store only: dependabot runs never reach the passphrase — the
+  # only pr.yaml job that unlocks git-crypt (prerelease) is guarded to
+  # same-repo human PRs. Guard against a locked clone: without
+  # it, File.read returns git-crypt ciphertext and github:secrets:ensure
+  # silently uploads garbage that only surfaces much later as an opaque
+  # GPG unlock failure in the release job.
+  passphrase_path = 'config/secrets/ci/encryption.passphrase'
+  unless File.exist?(passphrase_path)
+    raise "#{passphrase_path} not found — provision from an unlocked clone " \
+          'with the CI secrets present'
+  end
+  passphrase = File.binread(passphrase_path)
+  if passphrase.start_with?("\x00GITCRYPT")
+    raise 'encryption.passphrase is git-crypt ciphertext — unlock the ' \
+          'clone before provisioning'
+  end
+  t.secrets = [
+    { name: 'ENCRYPTION_PASSPHRASE', value: passphrase.chomp }
+  ]
+  t.environments = [
+    { name: 'release',
+      reviewers: [{ team: 'maintainers' }] }
+  ]
+end
+# rubocop:enable Metrics/BlockLength
+
+namespace :pipeline do
+  desc 'Prepare GitHub Actions pipeline'
+  task prepare: %i[
+    github:secrets:ensure
+    github:environments:ensure
   ]
 end
 
-namespace :pipeline do
-  desc 'Prepare CircleCI Pipeline'
-  task prepare: %i[
-    circle_ci:env_vars:ensure
-    circle_ci:checkout_keys:ensure
-    circle_ci:ssh_keys:ensure
-    github:deploy_keys:ensure
-  ]
+namespace :slack do
+  RakeSlack.define_notification_tasks do |t|
+    t.bot_token = ENV.fetch('SLACK_BOT_TOKEN', nil)
+    t.routing_rules = [
+      { when: { type: 'on_hold' },
+        channel: 'C038EDCRSQJ', format: :on_hold },  # release
+      { when: { actor: 'dependabot[bot]', outcome: 'success' },
+        channel: 'C03N711HVDG', format: :success },  # builds-dependabot
+      { when: { actor: 'dependabot[bot]' },
+        channel: 'C03N711HVDG', format: :failure },  # builds-dependabot
+      { when: { outcome: 'success' },
+        channel: 'C023XUE76GH', format: :success },  # builds
+      # Failures go to builds, not team-dev (org default), to keep noise
+      # out of a popular channel while this pipeline beds in.
+      { when: {},
+        channel: 'C023XUE76GH', format: :failure } # builds
+    ]
+  end
+end
+
+namespace :repository do
+  desc 'Set the git author for CI'
+  task :set_ci_author do
+    sh 'git config --global user.name "InfraBlocks CI"'
+    sh 'git config --global user.email "ci@infrablocks.io"'
+  end
 end
 
 namespace :image do
@@ -205,9 +235,14 @@ namespace :image do
     t.repository_name = 'prometheus-aws'
     t.repository_url = 'infrablocks/prometheus-aws'
 
-    t.credentials = YAML.load_file(
-      'config/secrets/dockerhub/credentials.yaml'
-    )
+    t.credentials = dynamic do
+      if File.binread('config/secrets/dockerhub/credentials.yaml')
+             .start_with?("\x00GITCRYPT")
+        nil # tree locked: skip Docker Hub auth (base image is public)
+      else
+        YAML.load_file('config/secrets/dockerhub/credentials.yaml')
+      end
+    end
 
     t.platform = 'linux/amd64'
 
@@ -287,5 +322,53 @@ namespace :version do
     next_tag = latest_tag.release!
     repo.add_tag(next_tag.to_s)
     repo.push('origin', 'main', tags: true)
+  end
+end
+
+namespace :prerelease do
+  desc 'Build and publish a PR-namespaced pre-release image (PR CI only)'
+  task :publish, %i[pr_number run_number run_attempt] do |_, args|
+    # PR image tag: the version main's prerelease would publish next
+    # (latest_tag bumped by the family's prerelease type — normally rc),
+    # plus a collision-free per-run suffix in the family's tag grammar.
+    # Docker tags forbid '+', so we reuse the semver '-'/'.'-separated
+    # form and no build metadata. No git tag is created, pushed, or
+    # committed — unlike version:bump this only ever tags the built image.
+    pr_tag = "#{latest_tag.rc!}.pr#{args.pr_number}" \
+             ".#{args.run_number}.#{args.run_attempt}"
+
+    Rake::Task['image:build'].invoke
+
+    credentials =
+      unless File.binread('config/secrets/dockerhub/credentials.yaml')
+                 .start_with?("\x00GITCRYPT")
+        YAML.load_file('config/secrets/dockerhub/credentials.yaml')
+      end
+    Docker.authenticate!(credentials) if credentials
+
+    # image:build tags the freshly built image with the bare repository
+    # NAME (no tag → :latest); the '<repository_url>:<pr_tag>' form does not
+    # exist until the tag call below, so look up ':latest' deterministically
+    # rather than filtering the full image list.
+    image =
+      begin
+        Docker::Image.get('prometheus-aws:latest')
+      rescue Docker::Error::NotFoundError
+        raise RakeDocker::ImageNotFound, 'prometheus-aws image not built'
+      end
+
+    image.tag(repo: 'infrablocks/prometheus-aws', tag: pr_tag,
+              force: true)
+    # repo_tag must be explicit: without it docker-api resolves the
+    # push repository from the image object's cached RepoTags.first
+    # (the bare local build tag, e.g. 'prometheus-aws:latest'), so the
+    # push targets docker.io/library/<name> where the PR tag does not
+    # exist. The tag: option only sets the tag, never the repository.
+    image.push(nil,
+               repo_tag: "infrablocks/prometheus-aws:#{pr_tag}") do |chunk|
+      RakeDocker::Output.print chunk
+    end
+
+    puts "Published infrablocks/prometheus-aws:#{pr_tag}"
   end
 end
