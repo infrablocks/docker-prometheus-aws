@@ -5,7 +5,7 @@ require 'spec_helper'
 describe 'commands' do
   image = 'prometheus-aws:latest'
   extra = {
-    'Entrypoint' => '/bin/sh'
+    'Entrypoint' => ['/bin/sh']
   }
 
   before(:all) do
