@@ -40,7 +40,7 @@ describe 'entrypoint' do
 
   def extra
     {
-      'Entrypoint' => '/bin/sh',
+      'Entrypoint' => ['/bin/sh'],
       'HostConfig' => {
         'NetworkMode' => 'docker_prometheus_aws_test_default'
       }
